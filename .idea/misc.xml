@@ -3,6 +3,9 @@
   <component name="DesignSurface">
     <option name="filePathToZoomLevelMap">
       <map>
+        <entry key="app/src/main/res/drawable/ic_close_white_24dp.xml" value="0.1775" />
+        <entry key="app/src/main/res/drawable/rounded_border_white.xml" value="0.1775" />
+        <entry key="app/src/main/res/layout/act_image.xml" value="0.24895833333333334" />
         <entry key="app/src/main/res/layout/main.xml" value="0.22447916666666667" />
       </map>
     </option>

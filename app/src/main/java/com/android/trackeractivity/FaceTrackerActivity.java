@@ -15,19 +15,40 @@
  */
 package com.android.trackeractivity;
 
+import static android.Manifest.permission.CAMERA;
+import static android.Manifest.permission.READ_EXTERNAL_STORAGE;
+import static android.Manifest.permission.READ_MEDIA_IMAGES;
+import static android.Manifest.permission.READ_MEDIA_VIDEO;
+import static android.Manifest.permission.WRITE_EXTERNAL_STORAGE;
+
 import android.Manifest;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.app.Dialog;
 import android.content.Context;
 import android.content.DialogInterface;
+import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.graphics.Bitmap;
+import android.graphics.Point;
+import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
+import android.os.Environment;
+import android.os.Handler;
+import android.provider.Settings;
+import android.util.DisplayMetrics;
 import android.util.Log;
+import android.view.Display;
 import android.view.View;
+import android.widget.ImageView;
+import android.widget.TextView;
 
+import androidx.annotation.NonNull;
+import androidx.annotation.RequiresApi;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
+import androidx.core.content.ContextCompat;
 
 import com.android.trackeractivity.ui.camera.CameraSourcePreview;
 import com.android.trackeractivity.ui.camera.GraphicOverlay;
@@ -40,7 +61,10 @@ import com.google.android.gms.vision.face.Face;
 import com.google.android.gms.vision.face.FaceDetector;
 import com.google.android.material.snackbar.Snackbar;
 
+import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.OutputStream;
 
 /**
  * Activity for the face tracker app.  This app detects faces with the rear facing camera, and draws
@@ -57,29 +81,198 @@ public final class FaceTrackerActivity extends AppCompatActivity {
     private static final int RC_HANDLE_GMS = 9001;
     // permission request codes need to be < 256
     private static final int RC_HANDLE_CAMERA_PERM = 2;
+    private ImageView imgOverlay;
+    private ImageView imgOverlayNew;
+    TransparentCircle tcFaceDetectionOverlay;
+    int heightDiff = 0;
+    int widthDiff = 0;
 
+    Handler mHandler;
+    AlertDialog dialog;
+    String TEMP_PHOTO_FILE_NAME = "temp_photo.jpg";
+    File mFileTemp;
     //==============================================================================================
     // Activity Methods
     //==============================================================================================
+    private final double OPEN_THRESHOLD = 0.85;
+    private final double CLOSE_THRESHOLD = 0.15;
+    private int state = 0;
+
+    private static final int PERMISSION_REQUEST_CODE = 200;
+    ImageView imgClose;
+    TextView txtBlinkEye;
+    TextView txtMsg;
+    String msgselfieCapture,msgBlinkEye;
+    Intent intent;
 
     /**
      * Initializes the UI and initiates the creation of a face detector.
      */
+    @RequiresApi(api = 33)
     @Override
     public void onCreate(Bundle icicle) {
         super.onCreate(icicle);
         setContentView(R.layout.main);
 
+
+        String state = Environment.getExternalStorageState();
+        if (Environment.MEDIA_MOUNTED.equals(state)) {
+            mFileTemp = new File(Environment.getExternalStorageDirectory(), TEMP_PHOTO_FILE_NAME);
+        } else {
+            mFileTemp = new File(getFilesDir(), TEMP_PHOTO_FILE_NAME);
+        }
+
+        intent = getIntent();
+        msgselfieCapture = "msgselfieCapture"; /*intent.getStringExtra("msgselfieCapture");*/
+        msgBlinkEye = "msgBlinkEye" /*intent.getStringExtra("msgBlinkEye")*/;
+
         mPreview = (CameraSourcePreview) findViewById(R.id.preview);
         mGraphicOverlay = (GraphicOverlay) findViewById(R.id.faceOverlay);
+        imgOverlay = (ImageView) findViewById(R.id.imgOverlay);
+        imgOverlayNew = (ImageView) findViewById(R.id. imgNew);
+        tcFaceDetectionOverlay = (TransparentCircle) findViewById(R.id.tcFaceDetectionOverlay);
+        imgClose = (ImageView) findViewById(R.id.imgClose);
+        txtMsg = (TextView) findViewById(R.id.txtMsg);
+        txtBlinkEye = (TextView) findViewById(R.id.txtBlinkEye);
+
+        txtMsg.setText(msgselfieCapture);
+        txtBlinkEye.setText(msgBlinkEye);
+
+        imgClose.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                FaceTrackerActivity.this.finish();
+                overridePendingTransition(0, R.anim.push_out_to_bottom);
+            }
+        });
 
         // Check for the camera permission before accessing the camera.  If the
         // permission is not granted yet, request permission.
-        int rc = ActivityCompat.checkSelfPermission(this, Manifest.permission.CAMERA);
+
+       /* int rc = ActivityCompat.checkSelfPermission(this, Manifest.permission.CAMERA);
         if (rc == PackageManager.PERMISSION_GRANTED) {
             createCameraSource();
         } else {
             requestCameraPermission();
+
+        }*/
+
+
+        if (!checkPermission()) {
+
+            requestPermission();
+
+        } else {
+            createCameraSource();
+        }
+
+
+        Display display = getWindowManager().getDefaultDisplay();
+        Point size = new Point();
+        display.getSize(size);
+//        int width = size.x;
+//        int height = size.y;
+
+        if (imgOverlay != null) {
+            imgOverlay.getX();
+            imgOverlay.getY();
+        }
+
+        if (imgOverlayNew != null) {
+            imgOverlayNew.getX();
+            imgOverlayNew.getY();
+        }
+
+
+    }
+
+    @RequiresApi(api = 33)
+    private boolean checkPermission() {
+        int result1 = ContextCompat.checkSelfPermission(getApplicationContext(), CAMERA);
+        int result2 = ContextCompat.checkSelfPermission(getApplicationContext(), READ_EXTERNAL_STORAGE);
+        int result3 = ContextCompat.checkSelfPermission(getApplicationContext(), WRITE_EXTERNAL_STORAGE);
+        int result4 = ContextCompat.checkSelfPermission(getApplicationContext(), READ_MEDIA_IMAGES);
+        int result5 = ContextCompat.checkSelfPermission(getApplicationContext(), READ_MEDIA_VIDEO);
+
+
+        return true/*result1 == PackageManager.PERMISSION_GRANTED
+                && result2 == PackageManager.PERMISSION_GRANTED
+                && result3 == PackageManager.PERMISSION_GRANTED*/;
+
+
+    }
+
+
+    private void requestPermission() {
+
+        ActivityCompat.requestPermissions(this, new String[]{CAMERA, WRITE_EXTERNAL_STORAGE, READ_EXTERNAL_STORAGE, READ_MEDIA_VIDEO, READ_MEDIA_IMAGES}, PERMISSION_REQUEST_CODE);
+
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String permissions[], int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        switch (requestCode) {
+            case PERMISSION_REQUEST_CODE:
+                if (grantResults.length > 0 && grantResults[0] + grantResults[1] + grantResults[2] == PackageManager.PERMISSION_GRANTED) {
+                    // permission was granted :)
+                    createCameraSource();
+                } else {
+//                    if (ActivityCompat.shouldShowRequestPermissionRationale(FaceTrackerActivity.this, CAMERA) ||
+//                            ActivityCompat.shouldShowRequestPermissionRationale(FaceTrackerActivity.this, WRITE_EXTERNAL_STORAGE) ||
+//                            ActivityCompat.shouldShowRequestPermissionRationale(FaceTrackerActivity.this, READ_EXTERNAL_STORAGE)) {
+//                        requestPermission();
+//                    } else {
+                    showDialogPermission();
+                    // }
+                }
+                break;
+        }
+    }
+
+    public void showDialogPermission() {
+        AlertDialog.Builder builder = new AlertDialog.Builder(FaceTrackerActivity.this);
+        builder.setMessage(getResources().getString(R.string.txt_need_camera_storage_permission))
+                //.setTitle(getResources().getString(R.string.app_name))
+                .setCancelable(false)
+                .setNegativeButton("Cancel", new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialog, int i) {
+                        dialog.dismiss();
+                        FaceTrackerActivity.this.finish();
+                        overridePendingTransition(0, R.anim.push_out_to_bottom);
+                    }
+                })
+                .setPositiveButton("Setting", new DialogInterface.OnClickListener() {
+                    public void onClick(DialogInterface dialog, int id) {
+                        Intent i = new Intent();
+                        i.setAction(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+                        i.addCategory(Intent.CATEGORY_DEFAULT);
+                        i.setData(Uri.parse("package:" + getPackageName()));
+                        dialog.dismiss();
+                        startActivityForResult(i, 2);
+
+                    }
+                });
+        AlertDialog alert = builder.create();
+        alert.show();
+
+
+    }
+
+    @RequiresApi(api = 33)
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == 2 && resultCode == Activity.RESULT_OK) {
+            createCameraSource();
+        } else {
+            //requestPermission();
+            if (!checkPermission()) {
+                showDialogPermission();
+            } else {
+                createCameraSource();
+            }
         }
     }
 
@@ -89,7 +282,6 @@ public final class FaceTrackerActivity extends AppCompatActivity {
      * sending the request.
      */
     private void requestCameraPermission() {
-        Log.w(TAG, "Camera permission is not granted. Requesting permission");
 
         final String[] permissions = new String[]{Manifest.permission.CAMERA};
 
@@ -110,7 +302,7 @@ public final class FaceTrackerActivity extends AppCompatActivity {
         };
 
         Snackbar.make(mGraphicOverlay, R.string.permission_camera_rationale,
-                Snackbar.LENGTH_INDEFINITE)
+                        Snackbar.LENGTH_INDEFINITE)
                 .setAction(R.string.ok, listener)
                 .show();
     }
@@ -125,10 +317,13 @@ public final class FaceTrackerActivity extends AppCompatActivity {
         Context context = getApplicationContext();
         FaceDetector detector = new FaceDetector.Builder(context)
                 .setClassificationType(FaceDetector.ALL_CLASSIFICATIONS)
+                .setProminentFaceOnly(true)
                 .build();
+        //Toast.makeText(FaceTrackerActivity.this, "CreateCameraSource", Toast.LENGTH_SHORT).show();
 
+        //        BoxDetector boxDetector = new BoxDetector(detector, 500, 500);
         detector.setProcessor(
-                new MultiProcessor.Builder(new GraphicFaceTrackerFactory())
+                new MultiProcessor.Builder<>(new GraphicFaceTrackerFactory())
                         .build());
 
         if (!detector.isOperational()) {
@@ -140,14 +335,22 @@ public final class FaceTrackerActivity extends AppCompatActivity {
             // isOperational() can be used to check if the required native library is currently
             // available.  The detector will automatically become operational once the library
             // download completes on device.
-            Log.w(TAG, "Face detector dependencies are not yet available.");
+            // Toast.makeText(FaceTrackerActivity.this, "CreateCameraSource", Toast.LENGTH_SHORT).show();
         }
-
+        DisplayMetrics displayMetrics = new DisplayMetrics();
+        getWindowManager().getDefaultDisplay().getMetrics(displayMetrics);
+//        int height = displayMetrics.heightPixels;
+//        int width = displayMetrics.widthPixels;
         mCameraSource = new CameraSource.Builder(context, detector)
-                .setRequestedPreviewSize(640, 480)
-                .setFacing(CameraSource.CAMERA_FACING_BACK)
+//                .setRequestedPreviewSize(displayMetrics.heightPixels, displayMetrics.widthPixels)
+//                .setRequestedPreviewSize(1280, 720)
+                .setRequestedPreviewSize(1280, 720)
+                .setFacing(CameraSource.CAMERA_FACING_FRONT)
                 .setRequestedFps(30.0f)
                 .build();
+
+        // need to set condition as per camera preview
+
     }
 
     /**
@@ -197,23 +400,19 @@ public final class FaceTrackerActivity extends AppCompatActivity {
      *                     or {@link PackageManager#PERMISSION_DENIED}. Never null.
      * @see #requestPermissions(String[], int)
      */
-    @Override
+ /*   @Override
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         if (requestCode != RC_HANDLE_CAMERA_PERM) {
-            Log.d(TAG, "Got unexpected permission result: " + requestCode);
             super.onRequestPermissionsResult(requestCode, permissions, grantResults);
             return;
         }
 
         if (grantResults.length != 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-            Log.d(TAG, "Camera permission granted - initialize the camera source");
             // we have permission, so create the camerasource
             createCameraSource();
             return;
         }
 
-        Log.e(TAG, "Permission not granted: results len = " + grantResults.length +
-                " Result code = " + (grantResults.length > 0 ? grantResults[0] : "(empty)"));
 
         DialogInterface.OnClickListener listener = new DialogInterface.OnClickListener() {
             public void onClick(DialogInterface dialog, int id) {
@@ -227,7 +426,7 @@ public final class FaceTrackerActivity extends AppCompatActivity {
                 .setPositiveButton(R.string.ok, listener)
                 .show();
     }
-
+*/
     //==============================================================================================
     // Camera Source Preview
     //==============================================================================================
@@ -250,13 +449,55 @@ public final class FaceTrackerActivity extends AppCompatActivity {
 
         if (mCameraSource != null) {
             try {
+                //  Toast.makeText(this, "Camera Source not null", Toast.LENGTH_SHORT).show();
                 mPreview.start(mCameraSource, mGraphicOverlay);
             } catch (IOException e) {
-                Log.e(TAG, "Unable to start camera source.", e);
                 mCameraSource.release();
                 mCameraSource = null;
             }
         }
+    }
+
+    public void setImageViewPicture(Bitmap bmpPicture) {
+        if (persistImage(bmpPicture) == null) return;
+        File f1 = new File(persistImage(bmpPicture).getPath());
+        Intent intent = new Intent();
+        intent.putExtra("filePath",f1.toString());
+        setResult(Activity.RESULT_OK,intent);
+        FaceTrackerActivity.this.finish();
+        FaceTrackerActivity.this.overridePendingTransition(0, R.anim.push_out_to_bottom);
+       /* Intent in1 = new Intent(this, ActDisplayImage.class);
+        in1.putExtra("image", f1.toString());
+        startActivity(in1);*/
+    }
+
+    private File persistImage(Bitmap bitmap) {
+        String state = Environment.getExternalStorageState();
+        if (Environment.MEDIA_MOUNTED.equals(state)) {
+//            mFileTemp = new File(Environment.getExternalStorageDirectory(), TEMP_PHOTO_FILE_NAME);
+            mFileTemp = new File(getFilesDir(), TEMP_PHOTO_FILE_NAME);
+        } else {
+            mFileTemp = new File(getFilesDir(), TEMP_PHOTO_FILE_NAME);
+        }
+        int file_size = 0;
+        if(mFileTemp!=null) {
+            file_size = Integer.parseInt(String.valueOf(mFileTemp.length() / 1024000));
+        }
+        OutputStream os;
+        try {
+            os = new FileOutputStream(mFileTemp);
+            if(file_size >= 5) {
+                bitmap.compress(Bitmap.CompressFormat.JPEG, 50, os);
+            } else {
+                bitmap.compress(Bitmap.CompressFormat.JPEG, 100, os);
+            }
+
+            os.flush();
+            os.close();
+            return mFileTemp;
+        } catch (Exception e) {
+        }
+        return null;
     }
 
     //==============================================================================================
@@ -281,17 +522,20 @@ public final class FaceTrackerActivity extends AppCompatActivity {
     private class GraphicFaceTracker extends Tracker<Face> {
         private GraphicOverlay mOverlay;
         private FaceGraphic mFaceGraphic;
+        boolean isBlink = false;
 
         GraphicFaceTracker(GraphicOverlay overlay) {
             mOverlay = overlay;
             mFaceGraphic = new FaceGraphic(overlay);
+//            mFaceGraphic.setImageViewCircle(imgOverlayNew);
+            mFaceGraphic.setTransplantCircle(tcFaceDetectionOverlay);
         }
 
         /**
          * Start tracking the detected face instance within the face overlay.
          */
         @Override
-        public void onNewItem(int faceId, Face item) {
+        public void onNewItem(int faceId, @NonNull Face item) {
             mFaceGraphic.setId(faceId);
         }
 
@@ -299,10 +543,75 @@ public final class FaceTrackerActivity extends AppCompatActivity {
          * Update the position/characteristics of the face within the overlay.
          */
         @Override
-        public void onUpdate(FaceDetector.Detections<Face> detectionResults, Face face) {
+        public void onUpdate( final FaceDetector.Detections<Face> detectionResults, final Face face) {
             mOverlay.add(mFaceGraphic);
-            mFaceGraphic.updateFace(face);
+            float width = tcFaceDetectionOverlay.rectF.right - tcFaceDetectionOverlay.rectF.left;
+            float height = tcFaceDetectionOverlay.rectF.bottom - tcFaceDetectionOverlay.rectF.top;
+            Log.e("DIFF_WIDTH ","=="+width);
+            Log.e("DIFF_HEIGHT  ","=="+height);
+            mFaceGraphic.updateFace(FaceTrackerActivity.this, face,tcFaceDetectionOverlay.rectF, new updateEyeBlink() {
+                @Override
+                public void inCircle(boolean inCircle) {
+                    /**
+                     * Eye blink start
+                     * */
+                    if (inCircle) {
+                        txtBlinkEye.setVisibility(View.VISIBLE);
+                        detectionResults.getDetectedItems();
+                        if (detectionResults.getDetectedItems().size() != 0) {
+                            for (int i = 0; i < detectionResults.getDetectedItems().size(); i++) {
+                                int key = detectionResults.getDetectedItems().keyAt(i);
+
+
+                                if (detectionResults.getDetectedItems().get(key) != null &&
+                                        detectionResults.getDetectedItems().get(key).getId() == face.getId()) {
+                                    Face mFace = detectionResults.getDetectedItems().get(key);
+
+
+                                    float left = mFace.getIsLeftEyeOpenProbability();
+                                    float right = mFace.getIsRightEyeOpenProbability();
+                                    if ((left == Face.UNCOMPUTED_PROBABILITY) ||
+                                            (right == Face.UNCOMPUTED_PROBABILITY)) {
+                                        // Toast.makeText(FaceTrackerActivity.this, "Eyes are not detected", Toast.LENGTH_SHORT).show();
+                                        // At least one of the eyes was not detected.
+                                        return;
+                                    }
+
+                                    switch (state) {
+                                        case 0:
+                                            if ((left > OPEN_THRESHOLD) && (right > OPEN_THRESHOLD)) {
+                                                // Both eyes are initially open
+                                                state = 1;
+
+                                            }
+                                            break;
+
+                                        case 1:
+                                            if ((left < CLOSE_THRESHOLD) && (right < CLOSE_THRESHOLD)) {
+                                                // Both eyes become closed
+                                                state = 2;
+                                            }
+                                            break;
+
+                                        case 2:
+                                            if ((left > OPEN_THRESHOLD) && (right > OPEN_THRESHOLD)) {
+                                                // Both eyes are open again
+                                                mPreview.takeImage();
+                                                state = 0;
+                                                inCircle = false;
+                                            }
+                                            break;
+                                    }
+                                }
+                            }
+                        }
+                    }else{
+                        txtBlinkEye.setVisibility(View.INVISIBLE);
+                    }
+                }
+            });
         }
+
 
         /**
          * Hide the graphic when the corresponding face was not detected.  This can happen for

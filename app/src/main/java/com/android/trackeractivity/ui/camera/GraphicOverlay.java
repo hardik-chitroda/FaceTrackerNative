@@ -20,7 +20,6 @@ import android.graphics.Canvas;
 import android.util.AttributeSet;
 import android.view.View;
 
-
 import com.google.android.gms.vision.CameraSource;
 
 import java.util.HashSet;
@@ -38,7 +37,7 @@ import java.util.Set;
  * Associated {@link Graphic} items should use the following methods to convert to view coordinates
  * for the graphics that are drawn:
  * <ol>
- * <li>{@link Graphic#scaleX(float)} and {@link Graphic#scaleY(float)} adjust the size of the
+ * <li> and  adjust the size of the
  * supplied value from the preview scale to the view scale.</li>
  * <li>{@link Graphic#translateX(float)} and {@link Graphic#translateY(float)} adjust the coordinate
  * from the preview's coordinate system to the view coordinate system.</li>
