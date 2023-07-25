@@ -1,4 +1,4 @@
-package com.google.android.gms.samples.vision.face.facetracker.ui;
+package com.android.trackeractivity.ui;
 
 import android.hardware.camera2.params.Face;
 import android.util.SparseArray;

@@ -13,13 +13,13 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.google.android.gms.samples.vision.face.facetracker;
+package com.android.trackeractivity;
 
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
 
-import com.google.android.gms.samples.vision.face.facetracker.ui.camera.GraphicOverlay;
+import com.android.trackeractivity.ui.camera.GraphicOverlay;
 import com.google.android.gms.vision.face.Face;
 
 /**
